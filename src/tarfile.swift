@@ -69,6 +69,10 @@ public class TarFile {
         let dataPtr = UnsafePointer<CChar>(self.data.bytes)
 
         while true {
+            guard self.offset + 512 < self.data.length else {
+                throw Errors.EndOfFile
+            }
+
             // parse header info
             let header = try self.parseHeader(dataPtr.advancedBy(self.offset))
 
