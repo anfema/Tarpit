@@ -12,36 +12,36 @@
 import Foundation
 
 
-public class TarFile {
+open class TarFile {
 
-    public enum Errors: ErrorType {
+    public enum Errors: Error {
         /// Invalid header encountered
-        case HeaderParseError
+        case headerParseError
         
         /// End of file marker found
-        case EndOfFile
+        case endOfFile
         
         /// Programming error (called extractFile on streaming mode or consumeData on file mode)
-        case ProgrammingError
+        case programmingError
     }
 
-    private struct TarFileHeader {
+    fileprivate struct TarFileHeader {
         var isFile: Bool
         var filepath: String
         var filesize: size_t
-        var mtime: NSDate
+        var mtime: Date
     }
     
-    private let streamingMode: Bool
+    fileprivate let streamingMode: Bool
     
     // MARK: - File based unpack
-    private var data: NSData! = nil
-    private var offset: size_t = 0
+    fileprivate var data: Data! = nil
+    fileprivate var offset: size_t = 0
 
     /// Initialize for unpacking with data
     ///
     /// - parameter data: tar file data
-    public init(data: NSData) {
+    public init(data: Data) {
         self.streamingMode = false
         self.data = data
     }
@@ -52,7 +52,7 @@ public class TarFile {
     ///
     /// - throws: NSData contentsOfURL errors
     public convenience init(fileName: String) throws {
-        self.init(data: try NSData(contentsOfURL: NSURL(fileURLWithPath: fileName), options: .DataReadingMappedIfSafe))
+        self.init(data: try Data(contentsOf: URL(fileURLWithPath: fileName), options: .mappedIfSafe))
     }
 
     /// Extract file from disk
@@ -60,44 +60,58 @@ public class TarFile {
     /// - throws: TarFile.Errors
     ///
     /// - returns: tuple with filename and data
-    public func extractFile() throws -> (filename: NSString, mtime: NSDate, data: NSData)? {
+    open func extractFile() throws -> (filename: String, mtime: Date, data: Data)? {
         if streamingMode {
-            throw Errors.ProgrammingError
+            throw Errors.programmingError
         }
         
-        // fetch one block at offset
-        let dataPtr = UnsafePointer<CChar>(self.data.bytes)
-
-        while true {
-            guard self.offset + 512 < self.data.length else {
-                throw Errors.EndOfFile
-            }
-
-            // parse header info
-            let header = try self.parseHeader(dataPtr.advancedBy(self.offset))
-
-            var data: NSData? = nil
-            if header.filesize > 0 {
-                // copy over data
-                data = NSData(bytes: dataPtr.advancedBy(self.offset + 512), length: header.filesize)
-            }
+        var fileData : Data?
+        var fileHeader : TarFileHeader?
+        
+        try self.data.withUnsafeBytes {(dataPtr: UnsafePointer<CChar>) -> Void in
             
-            // advance offset (512 byte blocks)
-            var size = 0
-            if header.filesize > 0 {
-                size = (header.filesize + (512 - header.filesize % 512))
-            }
-            self.offset += 512 + size
-
-            if let data = data where header.isFile {
-                // return file data
-                return (filename: header.filepath, mtime: header.mtime, data: data)
+            while true
+            {
+                guard self.offset + 512 < self.data.count else {
+                    throw Errors.endOfFile
+                }
+                
+                // parse header info
+                let header = try self.parseHeader(dataPtr.advanced(by: self.offset))
+                
+                var data: Data? = nil
+                if header.filesize > 0 {
+                    // copy over data
+                    data = Data(bytes: dataPtr.advanced(by: self.offset + 512), count: header.filesize)
+                }
+                
+                // advance offset (512 byte blocks)
+                var size = 0
+                if header.filesize > 0 {
+                    size = (header.filesize + (512 - header.filesize % 512))
+                }
+                self.offset += 512 + size
+                
+                if let data = data, header.isFile {
+                    // return file data
+                    fileData = data
+                    fileHeader = header
+                    break
+                }
             }
         }
+        
+        guard let _fileData = fileData,
+            let _fileHeader = fileHeader else
+        {
+            return nil
+        }
+        
+        return (filename: _fileHeader.filepath, mtime: _fileHeader.mtime, data: _fileData)
     }
     
     // MARK: - Stream based unpack
-    private var buffer = [CChar]()
+    fileprivate var buffer = [CChar]()
     
     /// Initialize for unpacking from streaming data
     ///
@@ -105,7 +119,7 @@ public class TarFile {
     public init(streamingData: [CChar]?) {
         self.streamingMode = true
         if let data = streamingData {
-            self.buffer.appendContentsOf(data)
+            self.buffer.append(contentsOf: data)
         }
     }
 
@@ -116,12 +130,12 @@ public class TarFile {
     /// - throws: TarFile.Errors
     ///
     /// - returns: tuple with filename and data on completion of a single file
-    public func consumeData(data: [CChar]) throws -> (filename: NSString, data: NSData)? {
+    open func consumeData(_ data: [CChar]) throws -> (filename: String, data: Data)? {
         if !self.streamingMode {
-            throw Errors.ProgrammingError
+            throw Errors.programmingError
         }
         
-        self.buffer.appendContentsOf(data)
+        self.buffer.append(contentsOf: data)
         let dataPtr = UnsafePointer<CChar>(self.buffer)
 
         if self.buffer.count > 512 {
@@ -129,7 +143,7 @@ public class TarFile {
             
             let endOffset = 512 + (header.filesize + (512 - header.filesize % 512))
             if self.buffer.count > endOffset {
-                let data = NSData(bytes: dataPtr.advancedBy(512), length: header.filesize)
+                let data = Data(bytes: dataPtr.advanced(by: 512), count: header.filesize)
                 self.buffer.removeFirst(endOffset)
                 
                 if header.isFile {
@@ -142,8 +156,8 @@ public class TarFile {
     
     
     // MARK: - Private
-    private func parseHeader(let header: UnsafePointer<CChar>) throws -> TarFileHeader {
-        var result = TarFileHeader(isFile: false, filepath: "", filesize: 0, mtime: NSDate(timeIntervalSince1970: 0))
+    fileprivate func parseHeader(_ header: UnsafePointer<CChar>) throws -> TarFileHeader {
+        var result = TarFileHeader(isFile: false, filepath: "", filesize: 0, mtime: Date(timeIntervalSince1970: 0))
         let buffer = UnsafeBufferPointer<CChar>(start:header, count:512)
         
         // verify magic 257-262
@@ -155,9 +169,9 @@ public class TarFile {
               header[262] == 0 else {
                 
                 if header[0] == 0 {
-                    throw Errors.EndOfFile
+                    throw Errors.endOfFile
                 }
-                throw Errors.HeaderParseError
+                throw Errors.headerParseError
         }
         
         // verify checksum
@@ -169,9 +183,9 @@ public class TarFile {
                 checksum += UInt32(header[index])
             }
         }
-        let headerChecksum:UInt32 = UInt32(strtol(header.advancedBy(148), nil, 8))
+        let headerChecksum:UInt32 = UInt32(strtol(header.advanced(by: 148), nil, 8))
         if headerChecksum != checksum {
-            throw Errors.HeaderParseError
+            throw Errors.headerParseError
         }
         
         // verify we're handling a file
@@ -180,18 +194,18 @@ public class TarFile {
         }
 
         // extract filename -> 0-99
-        guard let filename = String(CString: header, encoding: NSUTF8StringEncoding) else {
+        guard let filename = String(cString: header, encoding: String.Encoding.utf8) else {
             return result
         }
         result.filepath = filename
         
         // extract file size
-        let fileSize = strtol(header.advancedBy(124), nil, 8)
+        let fileSize = strtol(header.advanced(by: 124), nil, 8)
         result.filesize = fileSize
         
         // extract modification time
-        let mTime = strtol(header.advancedBy(136), nil, 8)
-        result.mtime = NSDate(timeIntervalSince1970: NSTimeInterval(mTime))
+        let mTime = strtol(header.advanced(by: 136), nil, 8)
+        result.mtime = Date(timeIntervalSince1970: TimeInterval(mTime))
         
         return result
     }

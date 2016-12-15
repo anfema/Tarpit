@@ -25,7 +25,7 @@ class tarpitTests: XCTestCase {
     }
     
     func testUnpack() {
-        guard let file = NSBundle(forClass: self.dynamicType).pathForResource("readme", ofType: "tar") else {
+        guard let file = Bundle(for: type(of: self)).path(forResource: "readme", ofType: "tar") else {
             XCTFail("Tar file not found")
             return
         }
@@ -34,10 +34,10 @@ class tarpitTests: XCTestCase {
             let tar = try TarFile(fileName: file)
             while let file = try tar.extractFile() {
                 XCTAssert((file.filename == "readme.md" || file.filename == "LICENSE.txt"))
-                XCTAssert((file.data.length == 1481 || file.data.length == 14750))
+                XCTAssert((file.data.count == 1481 || file.data.count == 14750))
                 print(file.filename)
             }
-        } catch TarFile.Errors.EndOfFile {
+        } catch TarFile.Errors.endOfFile {
             // ok
         } catch {
             XCTFail()
@@ -45,35 +45,35 @@ class tarpitTests: XCTestCase {
     }
     
     func testStreamingUnpack() {
-        guard let file = NSBundle(forClass: self.dynamicType).pathForResource("readme", ofType: "tar") else {
+        guard let file = Bundle(for: type(of: self)).path(forResource: "readme", ofType: "tar") else {
             XCTFail("Tar file not found")
             return
         }
         
-        guard let data = NSData(contentsOfFile: file)  else {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: file))  else {
             XCTFail("Tar file could not be read")
             return
         }
-        let dataPtr = UnsafePointer<CChar>(data.bytes)
+        let dataPtr = (data as NSData).bytes.bindMemory(to: CChar.self, capacity: data.count)
         
         let tar = TarFile(streamingData: nil)
         var i = 0
-        while i < data.length {
+        while i < data.count {
             var bytes = Int(arc4random_uniform(250) + 1)
-            if i + bytes >= data.length {
-                bytes = data.length - i
+            if i + bytes >= data.count {
+                bytes = data.count - i
             }
             
-            let buffer = UnsafeBufferPointer<CChar>(start: dataPtr.advancedBy(i), count: bytes)
+            let buffer = UnsafeBufferPointer<CChar>(start: dataPtr.advanced(by: i), count: bytes)
             do {
                 if let file = try tar.consumeData([CChar](buffer)) {
                     XCTAssert((file.filename == "readme.md" || file.filename == "LICENSE.txt"))
-                    XCTAssert((file.data.length == 1481 || file.data.length == 14750))
+                    XCTAssert((file.data.count == 1481 || file.data.count == 14750))
                     print(file.filename)
                 }
-            } catch TarFile.Errors.HeaderParseError {
+            } catch TarFile.Errors.headerParseError {
                 XCTFail("Header parse error")
-            } catch TarFile.Errors.EndOfFile {
+            } catch TarFile.Errors.endOfFile {
                 // ok
             } catch {
                 XCTFail("Unknown error")
