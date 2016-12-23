@@ -66,7 +66,7 @@ class tarpitTests: XCTestCase {
             
             let buffer = UnsafeBufferPointer<CChar>(start: dataPtr.advanced(by: i), count: bytes)
             do {
-                if let file = try tar.consumeData([CChar](buffer)) {
+                if let file = try tar.consume(data: [CChar](buffer)) {
                     XCTAssert((file.filename == "readme.md" || file.filename == "LICENSE.txt"))
                     XCTAssert((file.data.count == 1481 || file.data.count == 14750))
                     print(file.filename)

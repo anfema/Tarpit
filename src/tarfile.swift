@@ -77,7 +77,7 @@ open class TarFile {
                 }
                 
                 // parse header info
-                let header = try self.parseHeader(dataPtr.advanced(by: self.offset))
+                let header = try self.parse(header: dataPtr.advanced(by: self.offset))
                 
                 var data: Data? = nil
                 if header.filesize > 0 {
@@ -130,7 +130,7 @@ open class TarFile {
     /// - throws: TarFile.Errors
     ///
     /// - returns: tuple with filename and data on completion of a single file
-    open func consumeData(_ data: [CChar]) throws -> (filename: String, data: Data)? {
+    open func consume(data: [CChar]) throws -> (filename: String, data: Data)? {
         if !self.streamingMode {
             throw Errors.programmingError
         }
@@ -139,7 +139,7 @@ open class TarFile {
         let dataPtr = UnsafePointer<CChar>(self.buffer)
 
         if self.buffer.count > 512 {
-            let header = try self.parseHeader(dataPtr)
+            let header = try self.parse(header: dataPtr)
             
             let endOffset = 512 + (header.filesize + (512 - header.filesize % 512))
             if self.buffer.count > endOffset {
@@ -156,7 +156,7 @@ open class TarFile {
     
     
     // MARK: - Private
-    fileprivate func parseHeader(_ header: UnsafePointer<CChar>) throws -> TarFileHeader {
+    fileprivate func parse(header: UnsafePointer<CChar>) throws -> TarFileHeader {
         var result = TarFileHeader(isFile: false, filepath: "", filesize: 0, mtime: Date(timeIntervalSince1970: 0))
         let buffer = UnsafeBufferPointer<CChar>(start:header, count:512)
         
