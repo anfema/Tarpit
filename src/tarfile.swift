@@ -85,8 +85,14 @@ public class TarFile {
             // advance offset (512 byte blocks)
             var size = 0
             if header.filesize > 0 {
-                size = (header.filesize + (512 - header.filesize % 512))
+                if header.filesize % 512 == 0 {
+                    size = header.filesize
+                }
+                else {
+                    size = (header.filesize + (512 - header.filesize % 512))
+                }
             }
+            
             self.offset += 512 + size
 
             if let data = data where header.isFile {
