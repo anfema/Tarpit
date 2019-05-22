@@ -67,24 +67,25 @@ open class TarFile {
         
         var fileData : Data?
         var fileHeader : TarFileHeader?
-        
-        try self.data.withUnsafeBytes {(dataPtr: UnsafePointer<CChar>) -> Void in
-            
+
+        try self.data.withUnsafeBytes { rawBufferPointer -> Void in
+            let dataPtr = rawBufferPointer.bindMemory(to: CChar.self).baseAddress!
+
             while true
             {
                 guard self.offset + 512 < self.data.count else {
                     throw Errors.endOfFile
                 }
-                
+
                 // parse header info
                 let header = try self.parse(header: dataPtr.advanced(by: self.offset))
-                
+
                 var data: Data? = nil
                 if header.filesize > 0 {
                     // copy over data
                     data = Data(bytes: dataPtr.advanced(by: self.offset + 512), count: header.filesize)
                 }
-                
+
                 // advance offset (512 byte blocks)
                 var size = 0
                 if header.filesize > 0 {
@@ -95,9 +96,9 @@ open class TarFile {
                         size = (header.filesize + (512 - header.filesize % 512))
                     }
                 }
-                
+
                 self.offset += 512 + size
-                
+
                 if let data = data, header.isFile {
                     // return file data
                     fileData = data
