@@ -18,4 +18,6 @@ Pod::Spec.new do |s|
 
   s.source       = { :git => "https://github.com/anfema/Tarpit.git", :tag => "3.0.0" }
   s.source_files  = "src/*.swift"  
+
+  s.swift_version = '5.0'
 end
